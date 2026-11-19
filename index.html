@@ -1,0 +1,745 @@
+<meta charset="utf-8">
+<title>Schalenmodell-Memory</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Source+Sans+3:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: Kopfzeile oben · links Stapel Rot · Mitte Spielfeld (Rahmen in der Farbe der Person am Zug) · rechts Stapel Blau */
+:root {
+  --bg: #fff5ea;
+  --surface: #ffffff;
+  --fg: #1b2230;
+  --muted: #5e5a62;
+  --line: #ead8c4;
+  --back: #3b3346;
+  --back-ring: #f0c08a;
+  --red: #c8412f;
+  --red-soft: #fbe3dd;
+  --blue: #2b63a8;
+  --blue-soft: #dde8f6;
+  --on-team: #ffffff;
+  --shade: rgba(27, 34, 48, 0.55);
+  --font-display: "Bricolage Grotesque", "Avenir Next", "Segoe UI", sans-serif;
+  --font-body: "Source Sans 3", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+  --turn: var(--red);
+  --turn-soft: var(--red-soft);
+  --side: clamp(120px, 14vw, 180px);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #1b1610; --surface: #241e17; --fg: #f0ebe4; --muted: #b0a596; --line: #3b3226;
+    --back: #4a3f58; --back-ring: #e0a866;
+    --red: #ef7d6c; --red-soft: #3a211b; --blue: #7eaae6; --blue-soft: #1b2a3e;
+    --on-team: #1b1610; --shade: rgba(0, 0, 0, 0.7);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #1b1610; --surface: #241e17; --fg: #f0ebe4; --muted: #b0a596; --line: #3b3226;
+  --back: #4a3f58; --back-ring: #e0a866;
+  --red: #ef7d6c; --red-soft: #3a211b; --blue: #7eaae6; --blue-soft: #1b2a3e;
+  --on-team: #1b1610; --shade: rgba(0, 0, 0, 0.7);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { box-sizing: border-box; height: 100%; }
+body {
+  height: 100%; overflow: hidden;
+  background: var(--bg); color: var(--fg);
+  font-family: var(--font-body); font-size: 16px; line-height: 1.35;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 10px 12px;
+  -webkit-user-select: none; user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+button { font: inherit; color: inherit; touch-action: manipulation; }
+:focus-visible { outline: 3px solid var(--turn); outline-offset: 2px; }
+
+.app {
+  height: 100%;
+  display: grid;
+  grid-template-columns: var(--side) minmax(0, 1fr) var(--side);
+  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-areas: "bar bar bar" "red board blue";
+  gap: 10px 12px;
+}
+.app[data-turn="blue"] { --turn: var(--blue); --turn-soft: var(--blue-soft); }
+
+/* Kopfzeile */
+.bar { grid-area: bar; display: flex; align-items: center; gap: 12px 18px; min-width: 0; }
+h1 { font-family: var(--font-display); font-weight: 700; font-size: clamp(1.15rem, 2.2vw, 1.6rem); letter-spacing: -0.01em; margin: 0; white-space: nowrap; }
+.turn {
+  display: flex; align-items: center; gap: 10px; flex: 1 1 auto; min-width: 0;
+  background: var(--turn-soft); border: 2px solid var(--turn); border-radius: 999px;
+  padding: 5px 6px 5px 6px; transition: background .3s, border-color .3s;
+}
+.turn-chip {
+  background: var(--turn); color: var(--on-team); border-radius: 999px;
+  padding: 4px 14px; font-weight: 700; white-space: nowrap; transition: background .3s;
+}
+.status { flex: 1 1 auto; min-width: 0; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.next {
+  border: 0; border-radius: 999px; background: var(--turn); color: var(--on-team);
+  font-weight: 700; padding: 8px 18px; cursor: pointer; white-space: nowrap;
+  animation: pulse 1.4s ease-in-out infinite;
+}
+@keyframes pulse { 50% { transform: scale(1.05); } }
+.btn {
+  border: 1px solid var(--line); border-radius: 10px; background: var(--surface);
+  padding: 9px 14px; cursor: pointer; white-space: nowrap; font-weight: 600;
+}
+
+/* Stapel */
+.side {
+  display: flex; flex-direction: column; align-items: stretch; gap: 8px; min-height: 0;
+  border: 3px solid transparent; border-radius: 14px; padding: 10px 8px;
+  background: var(--surface); transition: background .3s, border-color .3s, opacity .3s;
+  opacity: 0.6;
+}
+.side.red { grid-area: red; --team: var(--red); --team-soft: var(--red-soft); }
+.side.blue { grid-area: blue; --team: var(--blue); --team-soft: var(--blue-soft); }
+.app[data-turn="red"] .side.red, .app[data-turn="blue"] .side.blue { opacity: 1; border-color: var(--team); background: var(--team-soft); }
+.side-h { display: flex; align-items: center; justify-content: center; gap: 8px; font-family: var(--font-display); font-weight: 700; font-size: 1.35rem; color: var(--team); }
+.side-h i { width: 16px; height: 16px; border-radius: 50%; background: var(--team); display: inline-block; }
+.score { text-align: center; font-family: var(--font-mono); font-size: 0.95rem; font-variant-numeric: tabular-nums; }
+.badge { align-self: center; background: var(--team); color: var(--on-team); border-radius: 999px; padding: 3px 12px; font-size: 0.85rem; font-weight: 700; visibility: hidden; }
+.app[data-turn="red"] .side.red .badge, .app[data-turn="blue"] .side.blue .badge { visibility: visible; }
+.pile {
+  position: relative; flex: 1 1 auto; min-height: 90px;
+  border: 2px dashed var(--team); border-radius: 12px; cursor: pointer; background: transparent;
+  --pc: calc(var(--side) - 58px);
+}
+.pile-empty { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 8px; font-size: 0.85rem; color: var(--muted); }
+.mini {
+  position: absolute; left: 50%; top: 50%;
+  width: var(--pc); height: var(--pc); margin: calc(var(--pc) / -2) 0 0 calc(var(--pc) / -2);
+  border-radius: 8px; box-shadow: 0 2px 6px rgba(20, 20, 30, 0.25);
+}
+
+/* Spielfeld */
+.board {
+  grid-area: board; position: relative; min-height: 0; min-width: 0;
+  border: 4px solid var(--turn); border-radius: 16px; background: var(--turn-soft);
+  transition: border-color .3s, background .3s;
+  display: grid; place-content: center; padding: 10px;
+  gap: var(--gap, 10px);
+  grid-template-columns: repeat(var(--cols, 4), var(--cs, 100px));
+  grid-auto-rows: var(--cs, 100px);
+}
+.card { position: relative; border: 0; padding: 0; background: transparent; cursor: pointer; perspective: 900px; border-radius: 10px; }
+.card.gone { visibility: hidden; pointer-events: none; }
+.inner { position: absolute; inset: 0; transform-style: preserve-3d; transition: transform .45s cubic-bezier(.3,.7,.3,1); }
+.card.up .inner { transform: rotateY(180deg); }
+.face { position: absolute; inset: 0; border-radius: 10px; overflow: hidden; -webkit-backface-visibility: hidden; backface-visibility: hidden; box-shadow: 0 2px 6px rgba(20, 20, 30, 0.22); }
+.face.back { background: var(--back); }
+.face.back svg { width: 100%; height: 100%; display: block; }
+.face.front { transform: rotateY(180deg); }
+.card.sel .face.front { box-shadow: 0 0 0 4px var(--turn), 0 2px 6px rgba(20, 20, 30, 0.22); }
+.pin {
+  position: absolute; top: -8px; right: -8px; z-index: 2;
+  width: 30px; height: 30px; border-radius: 50%;
+  background: var(--back); color: var(--back-ring); border: 2px solid var(--back-ring);
+  display: none; place-items: center; box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+}
+.pin svg { width: 17px; height: 17px; }
+.card.pinned .pin { display: grid; }
+.card.pinned:not(.sel) .face.front { box-shadow: 0 0 0 3px var(--back-ring), 0 2px 6px rgba(20, 20, 30, 0.22); }
+.card.nudge .inner { animation: nudge .35s; }
+@keyframes nudge { 25% { transform: rotate(-4deg); } 75% { transform: rotate(4deg); } }
+.tap-hint {
+  position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%);
+  background: var(--fg); color: var(--bg); padding: 6px 14px; border-radius: 999px; font-weight: 600; font-size: 0.9rem;
+  pointer-events: none; opacity: 0; transition: opacity .25s; white-space: nowrap;
+}
+.tap-hint.show { opacity: 0.92; }
+
+/* Kartenvorderseiten: immer weiß, wie das Modellfeld der Vorlage */
+.fc { position: absolute; inset: 0; background: #ffffff; container-type: size; }
+.fc svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.tile {
+  position: absolute; inset: 8% 17%;
+  border: max(1.5px, 1.4cqw) solid #1b2230; border-radius: 2px;
+  display: grid; place-items: center; color: #1b2230;
+}
+.tile b { font-family: var(--font-display); font-weight: 700; font-size: 34cqw; line-height: 1; margin-top: 8cqw; }
+.tile span { position: absolute; top: 4cqw; font-family: var(--font-mono); font-size: 11cqw; font-variant-numeric: tabular-nums; line-height: 1; }
+.tile .tz { left: 5cqw; }
+.tile .tm { right: 5cqw; }
+
+/* Vergrößerung */
+.zoom {
+  position: fixed; inset: 0; z-index: 40; background: var(--shade);
+  display: grid; place-items: center; align-content: center; gap: 12px;
+  padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+}
+.zoom-card { position: relative; width: var(--zs); height: var(--zs); border-radius: 16px; overflow: hidden; box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35); animation: pop .3s cubic-bezier(.2,.8,.3,1.2); border: 6px solid var(--turn); }
+.zoom.auto { --zs: min(68vh, 60vw); }
+.zoom.big { --zs: min(calc(100vh - 110px), calc(100vw - 40px)); }
+@keyframes pop { from { transform: scale(.5); opacity: 0; } }
+.zoom-foot { display: flex; align-items: center; gap: 14px; color: #ffffff; font-weight: 600; width: var(--zs); }
+.zoom-cap { flex: none; }
+.timer { flex: 1; height: 8px; border-radius: 4px; background: rgba(255, 255, 255, 0.3); overflow: hidden; }
+.timer i { display: block; height: 100%; background: var(--turn); transform-origin: left; animation: timer 3s linear forwards; }
+.zoom.big .timer { visibility: hidden; }
+@keyframes timer { to { transform: scaleX(0); } }
+.zoom-close { flex: none; font-size: 0.9rem; opacity: 0.85; }
+
+/* Fliegende Karten */
+.fly { position: fixed; z-index: 30; border-radius: 10px; overflow: hidden; box-shadow: 0 8px 22px rgba(0, 0, 0, 0.3); pointer-events: none; }
+
+/* Dialoge */
+.sheet {
+  position: fixed; inset: 0; z-index: 50; background: var(--shade);
+  display: grid; place-items: center; overflow: auto;
+  padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+}
+.panel {
+  background: var(--surface); border-radius: 18px; width: min(760px, 100%);
+  padding: 22px 24px; display: grid; gap: 16px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+}
+.panel h2 { font-family: var(--font-display); font-weight: 700; font-size: 1.6rem; margin: 0; text-wrap: balance; }
+.panel p { margin: 0; }
+.opts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 12px 18px; align-items: center; }
+.opt-l { font-family: var(--font-mono); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 600; }
+.seg { display: flex; flex-wrap: wrap; gap: 6px; }
+.seg button {
+  border: 2px solid var(--line); border-radius: 10px; background: var(--bg);
+  padding: 8px 14px; cursor: pointer; font-weight: 600; min-height: 44px;
+}
+.seg button[aria-pressed="true"] { background: var(--fg); border-color: var(--fg); color: var(--surface); }
+.seg button small { font-weight: 400; opacity: 0.75; margin-left: 4px; }
+.howto { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; }
+.howto div { background: var(--bg); border-radius: 12px; padding: 10px 12px; font-size: 0.92rem; }
+.howto b { display: block; font-family: var(--font-display); font-size: 1rem; margin-bottom: 2px; }
+.actions { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
+.go { border: 0; border-radius: 12px; background: var(--fg); color: var(--surface); padding: 12px 26px; font-weight: 700; font-size: 1.05rem; cursor: pointer; }
+.example { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.example .ex { position: relative; width: 74px; height: 74px; border-radius: 8px; overflow: hidden; border: 1px solid var(--line); }
+.example .plus { font-weight: 700; font-size: 1.2rem; color: var(--muted); }
+.example .ex-t { font-size: 0.9rem; color: var(--muted); flex: 1 1 200px; }
+
+.result { display: flex; gap: 14px; justify-content: center; }
+.result div { flex: 1; text-align: center; border-radius: 14px; padding: 14px; border: 3px solid var(--team); background: var(--team-soft); }
+.result .r { --team: var(--red); --team-soft: var(--red-soft); }
+.result .b { --team: var(--blue); --team-soft: var(--blue-soft); }
+.result strong { display: block; font-family: var(--font-display); font-size: 2.6rem; color: var(--team); font-variant-numeric: tabular-nums; line-height: 1.1; }
+
+.sets { display: grid; gap: 10px; max-height: 60vh; overflow: auto; }
+.set { display: flex; gap: 8px; }
+.set .ex { position: relative; width: 110px; height: 110px; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); flex: none; }
+
+/* Hochformat / schmale Bildschirme: Stapel oben nebeneinander */
+@media (max-aspect-ratio: 1/1) {
+  .app { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: auto auto minmax(0, 1fr); grid-template-areas: "bar bar" "red blue" "board board"; }
+  .side { flex-direction: row; align-items: center; padding: 6px 10px; }
+  .pile { min-height: 64px; height: 64px; --pc: 50px; }
+  .badge { display: none; }
+}
+@media (max-width: 760px) {
+  .bar { flex-wrap: wrap; }
+  .turn { order: 3; flex-basis: 100%; }
+  .opts { grid-template-columns: minmax(0, 1fr); }
+  .howto { grid-template-columns: minmax(0, 1fr); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .inner, .side, .board, .turn { transition-duration: .01s; }
+  .next, .zoom-card { animation: none; }
+}
+</style>
+
+<div class="app" id="app" data-turn="red">
+  <header class="bar">
+    <h1>Schalenmodell-Memory</h1>
+    <div class="turn" role="status" aria-live="polite">
+      <span class="turn-chip" id="turn-chip">Rot</span>
+      <span class="status" id="status">ist am Zug</span>
+      <button type="button" class="next" id="next" hidden>Weiter</button>
+    </div>
+    <button type="button" class="btn" id="new">Neues Spiel</button>
+  </header>
+
+  <aside class="side red" aria-label="Stapel von Rot">
+    <div class="side-h"><i></i>Rot</div>
+    <div class="score" id="score-red">0 Paare</div>
+    <span class="badge">am Zug</span>
+    <button type="button" class="pile" id="pile-red" aria-label="Gefundene Karten von Rot ansehen"><span class="pile-empty">Noch leer</span></button>
+  </aside>
+
+  <main class="board" id="board" aria-label="Spielfeld"></main>
+
+  <aside class="side blue" aria-label="Stapel von Blau">
+    <div class="side-h"><i></i>Blau</div>
+    <div class="score" id="score-blue">0 Paare</div>
+    <span class="badge">am Zug</span>
+    <button type="button" class="pile" id="pile-blue" aria-label="Gefundene Karten von Blau ansehen"><span class="pile-empty">Noch leer</span></button>
+  </aside>
+</div>
+
+<div class="tap-hint" id="hint">Doppelt tippen zum Aufdecken</div>
+
+<div class="zoom" id="zoom" hidden>
+  <div class="zoom-card" id="zoom-card"></div>
+  <div class="zoom-foot">
+    <span class="zoom-cap" id="zoom-cap"></span>
+    <span class="timer"><i id="timer"></i></span>
+    <span class="zoom-close">Tippen zum Schließen</span>
+  </div>
+</div>
+
+<div class="sheet" id="setup" hidden>
+  <form class="panel" id="setup-form">
+    <h2>Neues Spiel einstellen</h2>
+    <div class="opts">
+      <span class="opt-l">Spielart</span>
+      <div class="seg" id="o-mode">
+        <button type="button" data-v="pair">Pärchen</button>
+        <button type="button" data-v="trio">Trios</button>
+      </div>
+      <span class="opt-l" id="l-partner">Pärchen aus</span>
+      <div class="seg" id="o-partner">
+        <button type="button" data-v="shell">PSE + Schalenmodell</button>
+        <button type="button" data-v="level">PSE + Energiestufenmodell</button>
+        <button type="button" data-v="sl">Schalenmodell + Energiestufenmodell</button>
+        <button type="button" data-v="mix">PSE + eines der Modelle (gemischt)</button>
+      </div>
+      <span class="opt-l">Elemente</span>
+      <div class="seg" id="o-pool">
+        <button type="button" data-v="10">H bis Ne<small>(Periode 1–2)</small></button>
+        <button type="button" data-v="18">H bis Ar<small>(Periode 1–3)</small></button>
+      </div>
+      <span class="opt-l">Anzahl Karten</span>
+      <div class="seg" id="o-sets"></div>
+      <span class="opt-l">Wer beginnt</span>
+      <div class="seg" id="o-first">
+        <button type="button" data-v="red">Rot</button>
+        <button type="button" data-v="blue">Blau</button>
+      </div>
+    </div>
+    <div class="example" id="example"></div>
+    <div class="howto">
+      <div><b>Doppelt tippen</b>Karte aufdecken. Sie erscheint 3 Sekunden lang groß.</div>
+      <div><b>Einmal tippen</b>Eine offene Karte noch einmal groß ansehen.</div>
+      <div><b>Fixieren</b>Eine gerade aufgedeckte Karte nochmal doppelt antippen: Sie bleibt offen liegen. Erneut doppelt tippen löst sie.</div>
+      <div><b>Fixierte Karte nutzen</b>Doppelt antippen: Sie zählt als eine deiner aufgedeckten Karten.</div>
+      <div><b>Gefunden?</b>Die Karten wandern auf deinen Stapel und du bist noch einmal dran.</div>
+    </div>
+    <div class="actions">
+      <button type="button" class="btn" id="cancel">Abbrechen</button>
+      <button type="submit" class="go">Spiel starten</button>
+    </div>
+  </form>
+</div>
+
+<div class="sheet" id="end" hidden>
+  <div class="panel">
+    <h2 id="end-h"></h2>
+    <div class="result">
+      <div class="r"><strong id="end-red">0</strong><span id="end-red-l">Rot</span></div>
+      <div class="b"><strong id="end-blue">0</strong><span id="end-blue-l">Blau</span></div>
+    </div>
+    <div class="actions">
+      <button type="button" class="btn" id="end-setup">Einstellungen ändern</button>
+      <button type="button" class="go" id="end-again">Nochmal spielen</button>
+    </div>
+  </div>
+</div>
+
+<div class="sheet" id="sets" hidden>
+  <div class="panel">
+    <h2 id="sets-h"></h2>
+    <div class="sets" id="sets-list"></div>
+    <div class="actions"><button type="button" class="go" id="sets-x">Schließen</button></div>
+  </div>
+</div>
+
+<script>
+(() => {
+  // ---------- Daten (aus der Vorlage „Schalen- und Energiestufenmodelle“) ----------
+  const ELEMENTS = [
+    { Z: 1,  sym: "H",  name: "Wasserstoff", period: 1, n: 0,  mass: "1,008" },
+    { Z: 2,  sym: "He", name: "Helium",      period: 1, n: 2,  mass: "4,003" },
+    { Z: 3,  sym: "Li", name: "Lithium",     period: 2, n: 4,  mass: "6,94" },
+    { Z: 4,  sym: "Be", name: "Beryllium",   period: 2, n: 5,  mass: "9,012" },
+    { Z: 5,  sym: "B",  name: "Bor",         period: 2, n: 6,  mass: "10,81" },
+    { Z: 6,  sym: "C",  name: "Kohlenstoff", period: 2, n: 6,  mass: "12,01" },
+    { Z: 7,  sym: "N",  name: "Stickstoff",  period: 2, n: 7,  mass: "14,01" },
+    { Z: 8,  sym: "O",  name: "Sauerstoff",  period: 2, n: 8,  mass: "16,00" },
+    { Z: 9,  sym: "F",  name: "Fluor",       period: 2, n: 10, mass: "19,00" },
+    { Z: 10, sym: "Ne", name: "Neon",        period: 2, n: 10, mass: "20,18" },
+    { Z: 11, sym: "Na", name: "Natrium",     period: 3, n: 12, mass: "22,99" },
+    { Z: 12, sym: "Mg", name: "Magnesium",   period: 3, n: 12, mass: "24,31" },
+    { Z: 13, sym: "Al", name: "Aluminium",   period: 3, n: 14, mass: "26,98" },
+    { Z: 14, sym: "Si", name: "Silicium",    period: 3, n: 14, mass: "28,09" },
+    { Z: 15, sym: "P",  name: "Phosphor",    period: 3, n: 16, mass: "30,97" },
+    { Z: 16, sym: "S",  name: "Schwefel",    period: 3, n: 16, mass: "32,06" },
+    { Z: 17, sym: "Cl", name: "Chlor",       period: 3, n: 18, mass: "35,45" },
+    { Z: 18, sym: "Ar", name: "Argon",       period: 3, n: 22, mass: "39,95" },
+  ];
+  const NUC_R = 28;
+  const SHELLS = [
+    { name: "K", hex: "#FFF2CC", alpha: 1.0,  r0: NUC_R, r1: 88,  cap: 2 },
+    { name: "L", hex: "#DEEBF7", alpha: 1.0,  r0: 88,    r1: 160, cap: 8 },
+    { name: "M", hex: "#DFB8CC", alpha: 0.56, r0: 160,   r1: 234, cap: 18 },
+  ];
+  const BALL = "#f6aaa4";
+  const LABEL_ANG = -Math.PI * 0.75;
+  const LV_Y = { 1: 330, 2: 172, 3: 70 };
+  const LV_EDGE = { 1: "#CFA63A", 2: "#6F98C6", 3: "#B16F93" };
+  const INK = "#1b2230";
+  const SVG_FONT = "'Source Sans 3', 'Helvetica Neue', Arial, sans-serif";
+  const MONO = "'JetBrains Mono', ui-monospace, Menlo, monospace";
+  const TYPE_NAME = { pse: "Kachel aus dem Periodensystem", shell: "Schalenmodell", level: "Energiestufenmodell" };
+  const TEAM = { red: "Rot", blue: "Blau" };
+
+  const $ = (id) => document.getElementById(id);
+  const f = (x) => Math.round(x * 100) / 100;
+  function distribute(e) { const out = []; let rest = e; for (const s of SHELLS) { const k = Math.min(s.cap, rest); out.push(k); rest -= k; } return out; }
+  const roundMass = (el) => Math.round(parseFloat(el.mass.replace(",", ".")));
+  function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+
+  // ---------- Abbildungen ----------
+  // Schalenmodell (2D, Ruhelage) wie in der Vorlage, als SVG
+  function shellSVG(el) {
+    const shown = el.period, occ = distribute(el.Z);
+    let s = `<svg viewBox="-246 -246 492 492" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">`;
+    for (let i = 0; i < shown; i++) {
+      const { r0, r1, hex, alpha } = SHELLS[i];
+      s += `<path fill-rule="evenodd" fill="${hex}" fill-opacity="${alpha}" d="M${r1} 0A${r1} ${r1} 0 1 0 ${-r1} 0A${r1} ${r1} 0 1 0 ${r1} 0ZM${r0} 0A${r0} ${r0} 0 1 0 ${-r0} 0A${r0} ${r0} 0 1 0 ${r0} 0Z"/>`;
+    }
+    const p = el.Z, n = el.n;
+    {
+      // Atomkern immer mit Beschriftung (Protonen und Neutronen)
+      s += `<circle r="${NUC_R}" fill="${BALL}"/>`;
+      const fs = Math.round(NUC_R * 0.36), lines = [[`${p} p⁺`, "#8f1f19"]];
+      if (n) lines.push([`${n} n`, "#333a48"]);
+      const w = Math.max(...lines.map(([t]) => t.length)) * fs * 0.6, lh = fs * 1.2, y0 = -((lines.length - 1) * lh) / 2;
+      lines.forEach(([t, col], i) => { s += `<text x="${f(-w / 2)}" y="${f(y0 + i * lh)}" dominant-baseline="central" font-family="${MONO}" font-weight="600" font-size="${fs}" fill="${col}">${t}</text>`; });
+    }
+    for (let i = 0; i < shown; i++) {
+      const sh = SHELLS[i];
+      if (i === 0) s += `<circle r="${sh.r0}" fill="none" stroke="rgba(55,65,85,0.65)" stroke-width="1.3"/>`;
+      s += `<circle r="${sh.r1}" fill="none" stroke="rgba(55,65,85,0.65)" stroke-width="1.3"/>`;
+      const mid = (sh.r0 + sh.r1) / 2;
+      s += `<text x="${f(Math.cos(LABEL_ANG) * mid)}" y="${f(Math.sin(LABEL_ANG) * mid)}" text-anchor="middle" dominant-baseline="central" font-family="${MONO}" font-weight="600" font-size="13" fill="rgba(55,65,85,0.8)">${sh.name}</text>`;
+      const k = occ[i], sector = (2 * Math.PI) / k;
+      for (let j = 0; j < k; j++) {
+        const ang = LABEL_ANG + (j + 0.5) * sector;
+        s += `<circle cx="${f(Math.cos(ang) * mid)}" cy="${f(Math.sin(ang) * mid)}" r="6" fill="#111111"/>`;
+      }
+    }
+    return s + "</svg>";
+  }
+
+  // Energiestufenmodell wie in der Vorlage
+  function levelSVG(el) {
+    const occ = distribute(el.Z), shown = el.period;
+    let s = `<svg viewBox="0 0 400 400" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">`;
+    for (let n = 1; n <= shown; n++) {
+      const sh = SHELLS[n - 1];
+      s += `<rect x="66" y="${LV_Y[n] - 30}" width="290" height="40" rx="9" fill="${sh.hex}" fill-opacity="${sh.alpha}" stroke="${LV_EDGE[n]}" stroke-width="2"/>`;
+    }
+    s += `<line x1="46" y1="388" x2="46" y2="40" stroke="${INK}" stroke-width="2.5"/><polygon points="46,20 37,42 55,42" fill="${INK}"/>`;
+    s += `<text x="62" y="34" fill="${INK}" font-family="${SVG_FONT}" font-style="italic" font-weight="700" font-size="18">E</text>`;
+    for (let n = 1; n <= shown; n++) {
+      const y = LV_Y[n], k = occ[n - 1], gap = Math.min(25, 210 / Math.max(k, 1));
+      s += `<line x1="80" x2="300" y1="${y}" y2="${y}" stroke="${INK}" stroke-width="2.5"/>`;
+      s += `<text x="312" y="${y + 5}" fill="${INK}" font-family="${SVG_FONT}" font-weight="700" font-size="15">n = ${n}</text>`;
+      for (let i = 0; i < k; i++) s += `<circle cx="${f(190 + (i - (k - 1) / 2) * gap)}" cy="${y - 12}" r="8" fill="#000000"/>`;
+    }
+    return s + "</svg>";
+  }
+
+  function tileHTML(el) {
+    return `<div class="tile"><span class="tz">${el.Z}</span><span class="tm">${roundMass(el)}</span><b>${el.sym}</b></div>`;
+  }
+  function faceHTML(card) {
+    const inner = card.type === "pse" ? tileHTML(card.el) : card.type === "shell" ? shellSVG(card.el) : levelSVG(card.el);
+    return `<div class="fc">${inner}</div>`;
+  }
+  const BACK = (() => {
+    let s = `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">`;
+    [10, 22, 34, 46].forEach((r, i) => { s += `<circle cx="50" cy="50" r="${r}" fill="none" stroke="var(--back-ring)" stroke-width="${i ? 1.4 : 2}" opacity="${0.9 - i * 0.18}"/>`; });
+    s += `<circle cx="50" cy="50" r="5" fill="var(--back-ring)"/>`;
+    return s + "</svg>";
+  })();
+
+  const PIN = `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M15 3l6 6-2.5.5-3.8 3.8.6 4.2-1.4 1.4-3.6-3.6L5 20.6 3.4 19l5.3-5.3-3.6-3.6 1.4-1.4 4.2.6 3.8-3.8z"/></svg>`;
+
+  // ---------- Einstellungen ----------
+  const DEFAULTS = { mode: "pair", partner: "shell", pool: 18, sets: 8, first: "red" };
+  let settings = { ...DEFAULTS };
+  try { const saved = JSON.parse(localStorage.getItem("memory-settings") || "null"); if (saved) settings = { ...DEFAULTS, ...saved }; } catch (e) { /* ohne Speicher */ }
+  let draft = { ...settings };
+  const SET_STEPS = { pair: [4, 6, 8, 10, 12, 15, 18], trio: [3, 4, 6, 8, 10, 12, 15, 18] };
+
+  function groupSize(mode) { return mode === "trio" ? 3 : 2; }
+  function word(count, mode) { return mode === "trio" ? (count === 1 ? "Trio" : "Trios") : (count === 1 ? "Paar" : "Paare"); }
+
+  function renderSetup() {
+    const pick = (id, val) => $(id).querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.v === String(val))));
+    pick("o-mode", draft.mode); pick("o-partner", draft.partner); pick("o-pool", draft.pool); pick("o-first", draft.first);
+    $("o-partner").hidden = $("l-partner").hidden = draft.mode === "trio";
+    const steps = SET_STEPS[draft.mode].filter((k) => k <= draft.pool);
+    if (!steps.includes(draft.sets)) draft.sets = steps.reduce((a, b) => (Math.abs(b - draft.sets) < Math.abs(a - draft.sets) ? b : a));
+    const G = groupSize(draft.mode);
+    $("o-sets").innerHTML = steps.map((k) => `<button type="button" data-v="${k}" aria-pressed="${k === draft.sets}">${k * G}<small>(${k} ${word(k, draft.mode)})</small></button>`).join("");
+    // Beispiel mit Natrium
+    const el = ELEMENTS[10];
+    const types = draft.mode === "trio" || draft.partner === "mix" ? ["pse", "shell", "level"] : pairTypes(draft.partner);
+    const parts = types.map((t) => `<span class="ex">${faceHTML({ type: t, el })}</span>`);
+    const joiner = draft.mode === "pair" && draft.partner === "mix" ? [parts[0], '<span class="plus">+</span>', parts[1], '<span class="plus">oder</span>', parts[2]] : parts.flatMap((p, i) => (i ? ['<span class="plus">+</span>', p] : [p]));
+    const text = draft.mode === "trio" ? "Ein Trio: Kachel, Schalenmodell und Energiestufenmodell desselben Elements." : draft.partner === "mix" ? "Ein Pärchen: Kachel und eines der beiden Modelle desselben Elements." : draft.partner === "sl" ? "Ein Pärchen: Schalenmodell und Energiestufenmodell desselben Elements."
+      : `Ein Pärchen: Kachel und ${draft.partner === "shell" ? "Schalenmodell" : "Energiestufenmodell"} desselben Elements.`;
+    $("example").innerHTML = joiner.join("") + `<span class="ex-t">${text}</span>`;
+  }
+  function pairTypes(partner) {
+    if (partner === "sl") return ["shell", "level"];
+    if (partner === "mix") return ["pse", Math.random() < 0.5 ? "shell" : "level"];
+    return ["pse", partner];
+  }
+  ["o-mode", "o-partner", "o-pool", "o-sets", "o-first"].forEach((id) => {
+    $(id).addEventListener("click", (ev) => {
+      const b = ev.target.closest("button"); if (!b) return;
+      const key = { "o-mode": "mode", "o-partner": "partner", "o-pool": "pool", "o-sets": "sets", "o-first": "first" }[id];
+      draft[key] = ["pool", "sets"].includes(key) ? +b.dataset.v : b.dataset.v;
+      renderSetup();
+    });
+  });
+  function openSetup(canCancel) { draft = { ...settings }; renderSetup(); $("cancel").hidden = !canCancel; $("setup").hidden = false; }
+  $("setup-form").addEventListener("submit", (ev) => {
+    ev.preventDefault();
+    settings = { ...draft };
+    try { localStorage.setItem("memory-settings", JSON.stringify(settings)); } catch (e) { /* ohne Speicher */ }
+    $("setup").hidden = true; startGame();
+  });
+  $("cancel").addEventListener("click", () => { $("setup").hidden = true; });
+  $("new").addEventListener("click", () => openSetup(true));
+
+  // ---------- Spiel ----------
+  const app = $("app"), board = $("board");
+  let game = null;
+
+  function startGame() {
+    const G = groupSize(settings.mode);
+    const pool = shuffle(ELEMENTS.slice(0, settings.pool)).slice(0, settings.sets);
+    const cards = [];
+    pool.forEach((el) => {
+      const types = G === 3 ? ["pse", "shell", "level"] : pairTypes(settings.partner);
+      types.forEach((type) => cards.push({ el, type, up: false, gone: false }));
+    });
+    shuffle(cards);
+    game = { G, cards, turn: settings.first, flipped: [], found: { red: [], blue: [] }, pending: null, busy: false };
+    board.innerHTML = cards.map((c, i) => `<button type="button" class="card" data-i="${i}" aria-label="Verdeckte Karte"><div class="inner"><div class="face back">${BACK}</div><div class="face front"></div></div><span class="pin" aria-hidden="true">${PIN}</span></button>`).join("");
+    ["red", "blue"].forEach((t) => { $("pile-" + t).innerHTML = '<span class="pile-empty">Noch leer</span>'; });
+    $("end").hidden = true;
+    layout(); updateUI();
+  }
+
+  function cardEl(c) { return board.children[game.cards.indexOf(c)]; }
+
+  function layout() {
+    if (!game) return;
+    const n = game.cards.length, gap = n > 30 ? 8 : 10;
+    const W = board.clientWidth - 28, H = board.clientHeight - 28;
+    let best = { s: 0, cols: 1 };
+    for (let cols = 1; cols <= n; cols++) {
+      const rows = Math.ceil(n / cols);
+      const s = Math.min((W - (cols - 1) * gap) / cols, (H - (rows - 1) * gap) / rows);
+      if (s > best.s) best = { s, cols };
+    }
+    board.style.setProperty("--cols", best.cols);
+    board.style.setProperty("--cs", Math.max(40, Math.floor(best.s)) + "px");
+    board.style.setProperty("--gap", gap + "px");
+  }
+  new ResizeObserver(layout).observe(board);
+
+  function updateUI() {
+    app.dataset.turn = game.turn;
+    $("turn-chip").textContent = TEAM[game.turn];
+    const G = game.G, k = game.flipped.length, w1 = settings.mode === "trio" ? "Trio" : "Pärchen";
+    let msg;
+    if (game.pending === "miss") msg = `Kein ${w1}. Merkt euch die Karten!`;
+    else if (game.pending === "match") msg = `${w1} gefunden!`;
+    else if (k === 0) msg = "ist am Zug – doppelt tippen zum Aufdecken";
+    else msg = `ist am Zug – noch ${G - k} ${G - k === 1 ? "Karte" : "Karten"} aufdecken`;
+    $("status").textContent = msg;
+    const nx = $("next");
+    nx.hidden = game.pending !== "miss";
+    const other = game.turn === "red" ? "blue" : "red";
+    nx.textContent = `Weiter: ${TEAM[other]} ist dran`;
+    ["red", "blue"].forEach((t) => { const c = game.found[t].length; $("score-" + t).textContent = `${c} ${word(c, settings.mode)}`; });
+  }
+
+  // Tippen: doppelt auf verdeckte Karte = aufdecken · einmal auf offene Karte = vergrößern
+  // doppelt auf offene Karte dieses Zugs = fixieren / lösen · doppelt auf fixierte Karte = für diesen Zug mitzählen
+  const DOUBLE_MS = 400;
+  let lastTap = { i: -1, t: 0 }, tapTimer = 0;
+  board.addEventListener("click", (ev) => {
+    const btn = ev.target.closest(".card"); if (!btn || !game) return;
+    const i = +btn.dataset.i, c = game.cards[i], now = Date.now();
+    if (c.gone) return;
+    const isDouble = lastTap.i === i && now - lastTap.t < DOUBLE_MS;
+    clearTimeout(tapTimer);
+    if (isDouble) {
+      lastTap = { i: -1, t: 0 };
+      if (!c.up) flip(c);
+      else if (game.flipped.includes(c)) togglePin(c);
+      else if (c.pinned) useFixed(c);
+      return;
+    }
+    lastTap = { i, t: now };
+    tapTimer = setTimeout(() => {
+      lastTap = { i: -1, t: 0 };
+      if (c.up) openZoom(c, false);
+      else if (canFlip()) showHint(btn, "Doppelt tippen zum Aufdecken");
+    }, DOUBLE_MS);
+  });
+
+  function togglePin(c) {
+    if (game.busy) return;
+    c.pinned = !c.pinned;
+    cardEl(c).classList.toggle("pinned", c.pinned);
+    showHint(cardEl(c), c.pinned ? "Karte fixiert: Sie bleibt offen liegen" : "Fixierung gelöst");
+  }
+  // Eine fixierte Karte aus einem früheren Zug zählt als aufgedeckte Karte dieses Zugs
+  function useFixed(c) {
+    if (!canFlip()) return;
+    game.flipped.push(c); game.busy = true;
+    cardEl(c).classList.add("sel");
+    updateUI();
+    openZoom(c, true, () => { game.busy = false; evaluate(); });
+  }
+  board.addEventListener("dblclick", (ev) => ev.preventDefault());
+  document.addEventListener("gesturestart", (ev) => ev.preventDefault());
+
+  function showHint(btn, text) {
+    btn.classList.remove("nudge"); void btn.offsetWidth; btn.classList.add("nudge");
+    const h = $("hint"); h.textContent = text; h.classList.add("show");
+    clearTimeout(h._t); h._t = setTimeout(() => h.classList.remove("show"), 1600);
+  }
+
+  function canFlip() { return game && !game.busy && !game.pending && game.flipped.length < game.G; }
+
+  function flip(c) {
+    if (!canFlip()) return;
+    const btn = cardEl(c);
+    btn.querySelector(".front").innerHTML = faceHTML(c);
+    btn.setAttribute("aria-label", TYPE_NAME[c.type]);
+    c.up = true; btn.classList.add("up", "sel");
+    game.flipped.push(c); game.busy = true;
+    updateUI();
+    setTimeout(() => openZoom(c, true, () => { game.busy = false; evaluate(); }), 420);
+  }
+
+  function evaluate() {
+    const fl = game.flipped;
+    if (fl.length < game.G) { updateUI(); return; } // erst entscheiden, wenn alle Karten des Zugs offen sind
+    if (fl.some((c) => c.el.Z !== fl[0].el.Z)) { game.pending = "miss"; updateUI(); $("next").focus({ preventScroll: true }); return; }
+    game.pending = "match"; game.busy = true; updateUI(); setTimeout(collect, 450);
+  }
+
+  $("next").addEventListener("click", () => {
+    if (game.pending !== "miss") return;
+    game.flipped.forEach((c) => {
+      const b = cardEl(c); b.classList.remove("sel");
+      if (c.pinned) return; // fixierte Karten bleiben offen liegen
+      c.up = false; b.classList.remove("up"); b.setAttribute("aria-label", "Verdeckte Karte");
+      setTimeout(() => { if (!c.up) b.querySelector(".front").innerHTML = ""; }, 500);
+    });
+    game.flipped = []; game.pending = null;
+    game.turn = game.turn === "red" ? "blue" : "red";
+    updateUI();
+  });
+
+  // Gefundene Karten fliegen auf den Stapel der Person am Zug
+  function collect() {
+    const team = game.turn, pile = $("pile-" + team);
+    const set = game.flipped.slice().sort((a, b) => (a.type === "pse") - (b.type === "pse")); // Kachel liegt oben
+    game.found[team].push(set);
+    const idx = game.found[team].length - 1;
+    const empty = pile.querySelector(".pile-empty"); if (empty) empty.remove();
+    const pr = pile.getBoundingClientRect();
+    const pc = parseFloat(getComputedStyle(pile).getPropertyValue("--pc")) || 90;
+    const G = set.length;
+    let left = G;
+    set.forEach((c, j) => {
+      const btn = cardEl(c), r = btn.getBoundingClientRect();
+      const dx = (j - (G - 1) / 2) * 9, dy = -Math.min(idx, 10) * 3;
+      const rot = ((idx * 37 + j * 13) % 13) - 6 + (j - (G - 1) / 2) * 6;
+      const fly = document.createElement("div");
+      fly.className = "fly"; fly.innerHTML = faceHTML(c);
+      Object.assign(fly.style, { left: r.left + "px", top: r.top + "px", width: r.width + "px", height: r.height + "px" });
+      document.body.appendChild(fly);
+      c.gone = true; c.up = false; c.pinned = false; btn.classList.add("gone"); btn.classList.remove("sel", "pinned");
+      const tx = pr.left + pr.width / 2 + dx - (r.left + r.width / 2), ty = pr.top + pr.height / 2 + dy - (r.top + r.height / 2), sc = pc / r.width;
+      let landed = false;
+      const done = () => {
+        if (landed) return; landed = true;
+        fly.remove();
+        const m = document.createElement("div");
+        m.className = "mini"; m.innerHTML = faceHTML(c);
+        m.style.transform = `translate(${dx}px, ${dy}px) rotate(${rot}deg)`;
+        pile.appendChild(m);
+        if (--left === 0) finishCollect();
+      };
+      const anim = fly.animate ? fly.animate([{ transform: "none" }, { transform: `translate(${tx}px, ${ty}px) scale(${sc}) rotate(${rot}deg)` }], { duration: 650, delay: j * 90, easing: "cubic-bezier(.4,.1,.2,1)", fill: "forwards" }) : null;
+      if (anim) { anim.onfinish = done; setTimeout(done, 1200 + j * 90); } else done(); // Sicherheitsnetz, falls die Animation pausiert
+    });
+  }
+  function finishCollect() {
+    game.flipped = []; game.pending = null; game.busy = false;
+    updateUI();
+    if (game.cards.every((c) => c.gone)) setTimeout(showEnd, 500);
+  }
+
+  function showEnd() {
+    const r = game.found.red.length, b = game.found.blue.length;
+    $("end-h").textContent = r === b ? "Unentschieden!" : `${r > b ? "Rot" : "Blau"} gewinnt!`;
+    $("end-red").textContent = r; $("end-blue").textContent = b;
+    $("end-red-l").textContent = `Rot · ${word(r, settings.mode)}`; $("end-blue-l").textContent = `Blau · ${word(b, settings.mode)}`;
+    $("end").hidden = false;
+  }
+  $("end-again").addEventListener("click", startGame);
+  $("end-setup").addEventListener("click", () => { $("end").hidden = true; openSetup(false); });
+
+  // ---------- Vergrößerung ----------
+  const zoom = $("zoom");
+  let closeZoom = null;
+  function openZoom(c, auto, done) {
+    if (closeZoom) closeZoom();
+    zoom.className = "zoom " + (auto ? "auto" : "big");
+    $("zoom-card").innerHTML = faceHTML(c);
+    $("zoom-cap").textContent = TYPE_NAME[c.type];
+    const t = $("timer"); t.style.animation = "none"; void t.offsetWidth; t.style.animation = "";
+    zoom.hidden = false;
+    const opened = Date.now();
+    let timer = auto ? setTimeout(() => close(), 3000) : 0;
+    function close() { clearTimeout(timer); zoom.hidden = true; zoom.onclick = null; closeZoom = null; if (done) done(); }
+    zoom.onclick = () => { if (Date.now() - opened > 350) close(); };
+    closeZoom = close;
+  }
+  document.addEventListener("keydown", (ev) => { if (ev.key === "Escape" && closeZoom) closeZoom(); });
+
+  // ---------- Stapel ansehen ----------
+  ["red", "blue"].forEach((team) => $("pile-" + team).addEventListener("click", () => {
+    if (!game) return;
+    const sets = game.found[team];
+    $("sets-h").textContent = `Stapel von ${TEAM[team]}: ${sets.length} ${word(sets.length, settings.mode)}`;
+    $("sets-list").innerHTML = sets.length
+      ? sets.map((s) => `<div class="set">${s.slice().reverse().map((c) => `<span class="ex">${faceHTML(c)}</span>`).join("")}</div>`).join("")
+      : "<p>Noch keine Karten gefunden.</p>";
+    $("sets").hidden = false;
+  }));
+  $("sets-x").addEventListener("click", () => { $("sets").hidden = true; });
+
+  // ---------- Start ----------
+  startGame();
+  openSetup(false);
+})();
+</script>
