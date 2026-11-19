@@ -325,7 +325,7 @@ h1 { font-family: var(--font-display); font-weight: 700; font-size: clamp(1.15re
     <div class="howto">
       <div><b>Doppelt tippen</b>Karte aufdecken. Sie erscheint 3 Sekunden lang groß.</div>
       <div><b>Einmal tippen</b>Eine offene Karte noch einmal groß ansehen.</div>
-      <div><b>Fixieren</b>Eine gerade aufgedeckte Karte nochmal doppelt antippen: Sie bleibt offen liegen. Erneut doppelt tippen löst sie.</div>
+      <div><b>Fixieren</b>Eine gerade aufgedeckte Karte nochmal doppelt antippen: Sie bleibt offen liegen. Höchstens eine Karte pro Zug. Erneut doppelt tippen löst sie.</div>
       <div><b>Fixierte Karte nutzen</b>Doppelt antippen: Sie zählt als eine deiner aufgedeckten Karten.</div>
       <div><b>Gefunden?</b>Die Karten wandern auf deinen Stapel und du bist noch einmal dran.</div>
     </div>
@@ -534,7 +534,7 @@ h1 { font-family: var(--font-display); font-weight: 700; font-size: clamp(1.15re
       types.forEach((type) => cards.push({ el, type, up: false, gone: false }));
     });
     shuffle(cards);
-    game = { G, cards, turn: settings.first, flipped: [], found: { red: [], blue: [] }, pending: null, busy: false };
+    game = { G, cards, turn: settings.first, flipped: [], found: { red: [], blue: [] }, pending: null, busy: false, pinnedThisTurn: null };
     board.innerHTML = cards.map((c, i) => `<button type="button" class="card" data-i="${i}" aria-label="Verdeckte Karte"><div class="inner"><div class="face back">${BACK}</div><div class="face front"></div></div><span class="pin" aria-hidden="true">${PIN}</span></button>`).join("");
     ["red", "blue"].forEach((t) => { $("pile-" + t).innerHTML = '<span class="pile-empty">Noch leer</span>'; });
     $("end").hidden = true;
@@ -603,7 +603,14 @@ h1 { font-family: var(--font-display); font-weight: 700; font-size: clamp(1.15re
 
   function togglePin(c) {
     if (game.busy) return;
+    // Höchstens eine Karte pro Zug fixieren
+    if (!c.pinned && game.pinnedThisTurn && game.pinnedThisTurn !== c) {
+      showHint(cardEl(c), "Pro Zug kann nur eine Karte fixiert werden");
+      return;
+    }
     c.pinned = !c.pinned;
+    if (c.pinned) game.pinnedThisTurn = c;
+    else if (game.pinnedThisTurn === c) game.pinnedThisTurn = null;
     cardEl(c).classList.toggle("pinned", c.pinned);
     showHint(cardEl(c), c.pinned ? "Karte fixiert: Sie bleibt offen liegen" : "Fixierung gelöst");
   }
@@ -652,7 +659,7 @@ h1 { font-family: var(--font-display); font-weight: 700; font-size: clamp(1.15re
       c.up = false; b.classList.remove("up"); b.setAttribute("aria-label", "Verdeckte Karte");
       setTimeout(() => { if (!c.up) b.querySelector(".front").innerHTML = ""; }, 500);
     });
-    game.flipped = []; game.pending = null;
+    game.flipped = []; game.pending = null; game.pinnedThisTurn = null;
     game.turn = game.turn === "red" ? "blue" : "red";
     updateUI();
   });
@@ -693,7 +700,7 @@ h1 { font-family: var(--font-display); font-weight: 700; font-size: clamp(1.15re
     });
   }
   function finishCollect() {
-    game.flipped = []; game.pending = null; game.busy = false;
+    game.flipped = []; game.pending = null; game.busy = false; game.pinnedThisTurn = null;
     updateUI();
     if (game.cards.every((c) => c.gone)) setTimeout(showEnd, 500);
   }
