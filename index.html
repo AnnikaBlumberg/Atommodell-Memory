@@ -261,6 +261,7 @@ h1 { font-family: var(--font-display); font-weight: 700; font-size: clamp(1.15re
       <span class="status" id="status">ist am Zug</span>
       <button type="button" class="next" id="next" hidden>Weiter</button>
     </div>
+    <button type="button" class="btn" id="fs" aria-pressed="false">Vollbild</button>
     <button type="button" class="btn" id="new">Neues Spiel</button>
   </header>
 
@@ -744,6 +745,34 @@ h1 { font-family: var(--font-display); font-weight: 700; font-size: clamp(1.15re
     $("sets").hidden = false;
   }));
   $("sets-x").addEventListener("click", () => { $("sets").hidden = true; });
+
+  // ---------- Vollbild ----------
+  const fsBtn = $("fs"), root = document.documentElement;
+  const fsElement = () => document.fullscreenElement || document.webkitFullscreenElement;
+  const canFs = !!(root.requestFullscreen || root.webkitRequestFullscreen);
+  if (!canFs) fsBtn.hidden = true;
+  function syncFs() {
+    const on = !!fsElement();
+    fsBtn.textContent = on ? "Vollbild beenden" : "Vollbild";
+    fsBtn.setAttribute("aria-pressed", String(on));
+  }
+  function fsFailed() {
+    const h = $("hint"); h.textContent = "Vollbild ist hier nicht verfügbar"; h.classList.add("show");
+    clearTimeout(h._t); h._t = setTimeout(() => h.classList.remove("show"), 2000);
+  }
+  fsBtn.addEventListener("click", () => {
+    try {
+      if (fsElement()) {
+        const r = (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+        if (r && r.catch) r.catch(() => {});
+      } else {
+        const r = (root.requestFullscreen || root.webkitRequestFullscreen).call(root);
+        if (r && r.catch) r.catch(fsFailed);
+      }
+    } catch (e) { fsFailed(); }
+  });
+  document.addEventListener("fullscreenchange", () => { syncFs(); layout(); });
+  document.addEventListener("webkitfullscreenchange", () => { syncFs(); layout(); });
 
   // ---------- Start ----------
   startGame();
